@@ -65,8 +65,7 @@ const ROUTE_REGIONS = [
 function loadEnv() {
   const envPath = path.join(__dirname, ".env");
   if (!fs.existsSync(envPath)) {
-    console.error("server/.env topilmadi. cp env.example .env qiling.");
-    process.exit(1);
+    return; // Railway va boshqalar: Variables → process.env
   }
   const raw = fs.readFileSync(envPath, "utf8");
   for (const line of raw.split("\n")) {
