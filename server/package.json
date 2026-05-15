@@ -1,0 +1,18 @@
+{
+  "name": "pitak-driver-bot",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Haydovchi Telegram-bot + yangi buyurtmalarni kuzatish (Appwrite).",
+  "scripts": {
+    "start": "node driver-bot.mjs",
+    "setup": "node setup-appwrite.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "node-appwrite": "^14.2.0",
+    "undici": "^7.16.0"
+  }
+}
