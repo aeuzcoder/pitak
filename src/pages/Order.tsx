@@ -8,8 +8,8 @@ import { RegionModal } from "@/components/RegionModal";
 import { PageTransition } from "@/components/PageTransition";
 import { LottieButton } from "@/components/LottieButton";
 import { PRICES } from "@/data/regions";
-import { databases, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite";
-import { ID, Query } from "appwrite";
+import { supabase } from "@/lib/supabase";
+import { TABLES } from "@/lib/db";
 import toast from "react-hot-toast";
 import { ArrowLeft, Pencil, Info, Users, User, UserCircle, UserCircle2, Truck, Wallet, Plus, Package, ChevronRight, MapPin, Clock } from "lucide-react";
 import type { Tariff, SeatOption, GenderPref } from "@/types";
@@ -72,12 +72,12 @@ export default function Order() {
     if (!user) return;
     void (async () => {
       try {
-        const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PROFILES, [
-          Query.equal("user_id", user.$id),
-          Query.limit(1),
-        ]);
-        const doc = res.documents[0] as { phone?: string } | undefined;
-        setCustomerPhone(doc?.phone?.trim() || "");
+        const { data } = await supabase
+          .from(TABLES.PROFILES)
+          .select("phone")
+          .eq("user_id", user.$id)
+          .maybeSingle();
+        setCustomerPhone(data?.phone?.trim() || "");
       } catch {
         // profiles collection may be missing
       }
@@ -172,7 +172,7 @@ export default function Order() {
         pickupLng: store.pickupLng,
         currentLocationLabel: t("home.currentLocation"),
       });
-      await databases.createDocument(DATABASE_ID, COLLECTIONS.ORDERS, ID.unique(), {
+      const { error } = await supabase.from(TABLES.ORDERS).insert({
         user_id: user.$id,
         from_region: eff.region,
         from_district: eff.district,
@@ -184,12 +184,12 @@ export default function Order() {
         gender_pref: store.genderPref,
         comment: store.comment,
         status: "pending",
-        created_at: new Date().toISOString(),
         drivers_notified: false,
         customer_name: user.name || "",
         customer_phone: passengerPhone,
         departure_time: depDate.toISOString(),
       });
+      if (error) throw error;
       toast.success(t("common.success"));
       store.reset();
       navigate("/history", { replace: true });
@@ -224,7 +224,7 @@ export default function Order() {
         pickupLng: store.pickupLng,
         currentLocationLabel: t("home.currentLocation"),
       });
-      await databases.createDocument(DATABASE_ID, COLLECTIONS.ORDERS, ID.unique(), {
+      const { error } = await supabase.from(TABLES.ORDERS).insert({
         user_id: user.$id,
         from_region: eff.region,
         from_district: eff.district,
@@ -236,12 +236,12 @@ export default function Order() {
         gender_pref: "any",
         comment: store.deliveryComment,
         status: "pending",
-        created_at: new Date().toISOString(),
         drivers_notified: false,
         customer_name: user.name || "",
         customer_phone: passengerPhone,
         departure_time: depDate.toISOString(),
       });
+      if (error) throw error;
       toast.success(t("common.success"));
       store.reset();
       navigate("/history", { replace: true });

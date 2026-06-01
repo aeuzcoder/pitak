@@ -24,7 +24,7 @@ export default function Register() {
     e.preventDefault();
     setLoading(true);
     try {
-      await register(email, password, name);
+      await register(email, password, name, phone);
       toast.success(t("common.success"));
       navigate("/");
     } catch (err: unknown) {

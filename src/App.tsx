@@ -3,8 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { useAuthStore } from "@/store/authStore";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { supabase } from "@/lib/supabase";
 
-import { client } from "@/lib/appwrite";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Home from "@/pages/Home";
@@ -22,8 +22,28 @@ export default function App() {
   const checkSession = useAuthStore((s) => s.checkSession);
 
   useEffect(() => {
-    client.ping().catch(() => {});
-    checkSession();
+    void checkSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user;
+      useAuthStore.setState({
+        user: u
+          ? {
+              $id: u.id,
+              name:
+                (u.user_metadata as { name?: string })?.name?.trim() ||
+                u.email?.split("@")[0] ||
+                "",
+              email: u.email ?? "",
+            }
+          : null,
+        loading: false,
+      });
+    });
+
+    return () => subscription.unsubscribe();
   }, [checkSession]);
 
   return (

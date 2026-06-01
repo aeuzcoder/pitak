@@ -4,13 +4,13 @@ import { useTranslation } from "react-i18next";
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { motion } from "framer-motion";
-import { Query, ID } from "appwrite";
 import { Sidebar } from "@/components/Sidebar";
 import { LocationPickerModal } from "@/components/LocationPickerModal";
 import { RegionModal } from "@/components/RegionModal";
 import { useOrderStore } from "@/store/orderStore";
 import { useAuthStore } from "@/store/authStore";
-import { databases, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite";
+import { supabase } from "@/lib/supabase";
+import { TABLES, mapRows } from "@/lib/db";
 import toast from "react-hot-toast";
 import { Menu, Bookmark, Search, Navigation, MapPin, Home as HomeIcon, Briefcase } from "lucide-react";
 import type { QuickLocation, QuickLocationType } from "@/types";
@@ -123,13 +123,13 @@ export default function Home() {
     if (!user) return;
     const load = async () => {
       try {
-        const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.QUICK_LOCATIONS, [
-          Query.equal("user_id", user.$id),
-        ]);
+        const { data } = await supabase
+          .from(TABLES.QUICK_LOCATIONS)
+          .select("*")
+          .eq("user_id", user.$id);
         const map: Record<string, QuickLocation> = {};
-        for (const doc of res.documents) {
-          const ql = doc as unknown as QuickLocation;
-          map[ql.type] = ql;
+        for (const ql of mapRows(data ?? [])) {
+          map[ql.type] = ql as unknown as QuickLocation;
         }
         setQuickLocations(map);
       } catch {
@@ -145,13 +145,12 @@ export default function Home() {
     try {
       const existing = quickLocations[pickerType];
       if (existing) {
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.QUICK_LOCATIONS, existing.$id, {
-          lat,
-          lng,
-          address: addr,
-        });
+        await supabase
+          .from(TABLES.QUICK_LOCATIONS)
+          .update({ lat, lng, address: addr })
+          .eq("id", existing.$id);
       } else {
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.QUICK_LOCATIONS, ID.unique(), {
+        await supabase.from(TABLES.QUICK_LOCATIONS).insert({
           user_id: user.$id,
           type: pickerType,
           lat,
@@ -159,13 +158,13 @@ export default function Home() {
           address: addr,
         });
       }
-      const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.QUICK_LOCATIONS, [
-        Query.equal("user_id", user.$id),
-      ]);
+      const { data } = await supabase
+        .from(TABLES.QUICK_LOCATIONS)
+        .select("*")
+        .eq("user_id", user.$id);
       const updated: Record<string, QuickLocation> = {};
-      for (const doc of res.documents) {
-        const ql = doc as unknown as QuickLocation;
-        updated[ql.type] = ql;
+      for (const ql of mapRows(data ?? [])) {
+        updated[ql.type] = ql as unknown as QuickLocation;
       }
       setQuickLocations(updated);
     } catch {

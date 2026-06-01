@@ -8,9 +8,13 @@ import { LottieButton } from "@/components/LottieButton";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import toast from "react-hot-toast";
-import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Send } from "lucide-react";
 import { getErrorMessage } from "@/utils/getErrorMessage";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import loginAnimation from "@/assets/lottie/login_animation.json";
+
+const DRIVER_BOT_URL = "https://t.me/pitak_driver_bot";
 
 export default function Login() {
   const { t } = useTranslation();
@@ -135,6 +139,53 @@ export default function Login() {
               >
                 {t("auth.loginBtn")}
               </LottieButton>
+
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.35 }}
+                    className="space-y-3 pt-1"
+                  >
+                    <motion.div
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ delay: 0.4, duration: 0.4 }}
+                      className="flex items-center gap-3"
+                    >
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {t("auth.or")}
+                      </span>
+                      <motion.div
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ delay: 0.4, duration: 0.4 }}
+                        className="h-px flex-1 bg-border"
+                      />
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.45, duration: 0.35 }}
+                    >
+                      <a
+                        href={DRIVER_BOT_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "lg" }),
+                          "w-full h-13 border-2"
+                        )}
+                      >
+                        <Send className="h-4 w-4" />
+                        {t("auth.driverLogin")}
+                      </a>
+                      <p className="mt-2 text-center text-xs text-muted-foreground">
+                        {t("auth.driverLoginHint")}
+                      </p>
+                    </motion.div>
+                  </motion.div>
 
                   <p className="text-center text-sm text-muted-foreground pt-2">
                     {t("auth.noAccount")}{" "}

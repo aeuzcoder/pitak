@@ -15,6 +15,9 @@ export default {
     noAccount: "Нет аккаунта?",
     hasAccount: "Уже есть аккаунт?",
     logout: "Выйти",
+    or: "или",
+    driverLogin: "Войти как водитель",
+    driverLoginHint: "Зарегистрируйтесь в Telegram и принимайте заказы",
   },
   home: {
     where: "Куда?",
@@ -147,6 +150,11 @@ export default {
     rateLimited: "Слишком много попыток. Подождите немного",
     networkError: "Нет подключения к интернету. Проверьте сеть",
     generalError: "Произошла ошибка. Попробуйте ещё раз",
+    emailNotConfirmed: "Email не подтверждён. Проверьте почту",
+    emailAddressInvalid:
+      "Этот email отклонён Supabase. Попробуйте другой (например имя.фамилия@gmail.com)",
+    emailNotAuthorized:
+      "Письмо не отправлено: настройте SMTP в Supabase → Authentication или отключите Confirm email",
     unauthorized: "Сессия истекла. Войдите снова",
     passwordMismatch: "Пароли не совпадают",
     userNotFound: "Пользователь не найден",

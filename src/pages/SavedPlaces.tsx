@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
-import { databases, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite";
-import { Query, ID } from "appwrite";
+import { supabase } from "@/lib/supabase";
+import { TABLES, mapRows } from "@/lib/db";
 import { PageTransition } from "@/components/PageTransition";
 import { RegionModal } from "@/components/RegionModal";
 import { LocationPickerModal } from "@/components/LocationPickerModal";
@@ -28,11 +28,12 @@ export default function SavedPlaces() {
   const fetchPlaces = async () => {
     if (!user) return;
     try {
-      const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.SAVED_PLACES, [
-        Query.equal("user_id", user.$id),
-        Query.orderDesc("created_at"),
-      ]);
-      setPlaces(res.documents as unknown as SavedPlace[]);
+      const { data } = await supabase
+        .from(TABLES.SAVED_PLACES)
+        .select("*")
+        .eq("user_id", user.$id)
+        .order("created_at", { ascending: false });
+      setPlaces(mapRows(data ?? []) as unknown as SavedPlace[]);
     } catch {
       setPlaces([]);
     } finally {
@@ -43,13 +44,13 @@ export default function SavedPlaces() {
   const fetchQuickLocations = async () => {
     if (!user) return;
     try {
-      const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.QUICK_LOCATIONS, [
-        Query.equal("user_id", user.$id),
-      ]);
+      const { data } = await supabase
+        .from(TABLES.QUICK_LOCATIONS)
+        .select("*")
+        .eq("user_id", user.$id);
       const map: Record<string, QuickLocation> = {};
-      for (const doc of res.documents) {
-        const ql = doc as unknown as QuickLocation;
-        map[ql.type] = ql;
+      for (const ql of mapRows(data ?? [])) {
+        map[ql.type] = ql as unknown as QuickLocation;
       }
       setQuickLocations(map);
     } catch {
@@ -65,13 +66,13 @@ export default function SavedPlaces() {
   const handleAddPlace = async (_regionId: string, regionName: string, districtName: string) => {
     if (!user) return;
     try {
-      await databases.createDocument(DATABASE_ID, COLLECTIONS.SAVED_PLACES, ID.unique(), {
+      const { error } = await supabase.from(TABLES.SAVED_PLACES).insert({
         user_id: user.$id,
         name: `${regionName}, ${districtName}`,
         region_id: _regionId,
         district_id: districtName,
-        created_at: new Date().toISOString(),
       });
+      if (error) throw error;
       toast.success(t("common.success"));
       fetchPlaces();
     } catch (err) {
@@ -82,7 +83,8 @@ export default function SavedPlaces() {
 
   const handleDelete = async (id: string) => {
     try {
-      await databases.deleteDocument(DATABASE_ID, COLLECTIONS.SAVED_PLACES, id);
+      const { error } = await supabase.from(TABLES.SAVED_PLACES).delete().eq("id", id);
+      if (error) throw error;
       setPlaces((prev) => prev.filter((p) => p.$id !== id));
       toast.success(t("common.success"));
     } catch {
@@ -101,14 +103,17 @@ export default function SavedPlaces() {
     try {
       const existing = quickLocations[pickerType];
       if (existing) {
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.QUICK_LOCATIONS, existing.$id, {
-          lat, lng, address: addr,
-        });
+        await supabase
+          .from(TABLES.QUICK_LOCATIONS)
+          .update({ lat, lng, address: addr })
+          .eq("id", existing.$id);
       } else {
-        await databases.createDocument(DATABASE_ID, COLLECTIONS.QUICK_LOCATIONS, ID.unique(), {
+        await supabase.from(TABLES.QUICK_LOCATIONS).insert({
           user_id: user.$id,
           type: pickerType,
-          lat, lng, address: addr,
+          lat,
+          lng,
+          address: addr,
         });
       }
       toast.success(t("common.success"));

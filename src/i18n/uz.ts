@@ -15,6 +15,9 @@ export default {
     noAccount: "Hisobingiz yo'qmi?",
     hasAccount: "Hisobingiz bormi?",
     logout: "Chiqish",
+    or: "yoki",
+    driverLogin: "Haydovchi sifatida kirish",
+    driverLoginHint: "Telegram orqali ro'yxatdan o'ting va buyurtmalarni qabul qiling",
   },
   home: {
     where: "Qaerga?",
@@ -147,6 +150,11 @@ export default {
     rateLimited: "Juda ko'p urinish. Biroz kutib turing",
     networkError: "Internet aloqasi yo'q. Tarmoqni tekshiring",
     generalError: "Xatolik yuz berdi. Qaytadan urinib ko'ring",
+    emailNotConfirmed: "Email tasdiqlanmagan. Pochtangizni tekshiring",
+    emailAddressInvalid:
+      "Bu email Supabase tomonidan qabul qilinmadi. Boshqa manzil sinab ko'ring (masalan ism.familiya@gmail.com)",
+    emailNotAuthorized:
+      "Tasdiq xati yuborilmadi: Supabase → Authentication → SMTP sozlang yoki Confirm email ni o'chiring",
     unauthorized: "Sessiya muddati tugagan. Qaytadan kiring",
     passwordMismatch: "Parollar mos kelmadi",
     userNotFound: "Foydalanuvchi topilmadi",

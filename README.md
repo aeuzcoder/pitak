@@ -7,25 +7,41 @@ Uzbekiston bo'ylab viloyatlararo taksi buyurtma qilish uchun web ilova.
 - React + TypeScript + Vite
 - Tailwind CSS
 - Leaflet + OpenStreetMap
-- Appwrite (Auth, Database)
+- Supabase (Auth, Database, Storage, Realtime)
 - Zustand (state management)
-- React Router v6
+- React Router
 - i18next (O'zbek + Rus)
 
 ## Ishga tushirish
+
+1. [Supabase](https://supabase.com) loyihasida `supabase/schema.sql` ni **SQL Editor** da ishga tushiring.
+2. `.env.example` dan nusxa oling va to'ldiring:
+
+```bash
+cp .env.example .env
+# VITE_SUPABASE_URL — Dashboard → Settings → API → Project URL
+# VITE_SUPABASE_ANON_KEY — publishable (anon) key
+```
+
+3. Ilovani ishga tushiring:
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Appwrite Seed
+**Authentication:** Dashboard → Authentication → Providers → Email yoqilgan bo'lishi kerak.
 
-Ma'lumotlar bazasiga viloyatlar va tumanlarni yuklash uchun:
+## Haydovchi boti
 
 ```bash
-npx tsx src/data/seed.ts
+cd server
+cp env.example .env
+npm install
+npm start
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY` (secret) va `TELEGRAM_BOT_TOKEN` kerak.
 
 ## Ekranlar
 
@@ -38,8 +54,3 @@ npx tsx src/data/seed.ts
 | `/history` | Buyurtmalar tarixi |
 | `/profile` | Profil |
 | `/saved-places` | Saqlangan joylar |
-| `/promocodes` | Promokodlar |
-
-## Environment
-
-Appwrite konfiguratsiyasi `src/lib/appwrite.ts` faylida.

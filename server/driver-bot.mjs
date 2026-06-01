@@ -1,23 +1,12 @@
 /**
  * Pitak haydovchi boti + buyurtma xabarlari.
  *
- * Appwrite Console — yangi kolleksiya `drivers` (ID: drivers):
- *   - telegram_chat_id (string, required, unique)
- *   - name (string, required)
- *   - phone (string, required)
- *   - remote_region (string, required) — Toshkentdan boshqa viloyatning name_uz (masalan Andijon)
- *   - active (boolean, default true)
- *   - created_at (datetime)
- *
- * Kolleksiya `orders` ga qo'shing:
- *   - drivers_notified (boolean, default false)
- *   - driver_chat_id, driver_name, driver_phone (string, optional)
- *   - customer_name, customer_phone, departure_time (string, optional)
+ * Supabase: `supabase/schema.sql` ni SQL Editor da ishga tushiring.
  *
  * Ishga tushirish: cp env.example .env && npm install && npm start
  */
 
-import { Client, Databases, Query, ID } from "node-appwrite";
+import { createClient } from "@supabase/supabase-js";
 import { Agent, fetch as undiciFetch } from "undici";
 import path from "node:path";
 import fs from "node:fs";
@@ -81,20 +70,15 @@ function loadEnv() {
 await loadEnv();
 
 const TOKEN = (process.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_API)?.replace(/^["']|["']$/g, "").trim();
-const ENDPOINT = process.env.APPWRITE_ENDPOINT;
-const PROJECT = process.env.APPWRITE_PROJECT_ID;
-const API_KEY = process.env.APPWRITE_API_KEY?.replace(/^["']|["']$/g, "").trim();
-const DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
-const ORDERS = process.env.APPWRITE_ORDERS_COLLECTION || "orders";
-const DRIVERS = process.env.APPWRITE_DRIVERS_COLLECTION || "drivers";
+const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/^["']|["']$/g, "").trim();
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.replace(/^["']|["']$/g, "").trim();
 
-if (!TOKEN || !ENDPOINT || !PROJECT || !API_KEY || !DATABASE_ID) {
-  console.error("TELEGRAM_BOT_TOKEN va Appwrite o'zgaruvchilari to'liq emas.");
+if (!TOKEN || !SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("TELEGRAM_BOT_TOKEN, SUPABASE_URL va SUPABASE_SERVICE_ROLE_KEY kerak.");
   process.exit(1);
 }
 
-const aw = new Client().setEndpoint(ENDPOINT).setProject(PROJECT).setKey(API_KEY);
-const databases = new Databases(aw);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /** Telegram long polling 45s — Node fetch (undici) default headers timeout yetarli emas. */
 const telegramAgent = new Agent({
@@ -161,11 +145,13 @@ function normalizePhoneFromContact(phone_number) {
 }
 
 async function findDriverByChat(chatId) {
-  const res = await databases.listDocuments(DATABASE_ID, DRIVERS, [
-    Query.equal("telegram_chat_id", String(chatId)),
-    Query.limit(1),
-  ]);
-  return res.documents[0] ?? null;
+  const { data } = await supabase
+    .from("drivers")
+    .select("*")
+    .eq("telegram_chat_id", String(chatId))
+    .maybeSingle();
+  if (!data) return null;
+  return { ...data, $id: data.id };
 }
 
 async function upsertDriver(chatId, { name, phone, remote_region }) {
@@ -179,16 +165,19 @@ async function upsertDriver(chatId, { name, phone, remote_region }) {
     created_at: new Date().toISOString(),
   };
   if (existing) {
-    await databases.updateDocument(DATABASE_ID, DRIVERS, existing.$id, {
-      name: row.name,
-      phone: row.phone,
-      remote_region: row.remote_region,
-      active: true,
-    });
+    await supabase
+      .from("drivers")
+      .update({
+        name: row.name,
+        phone: row.phone,
+        remote_region: row.remote_region,
+        active: true,
+      })
+      .eq("id", existing.$id);
     return existing.$id;
   }
-  const created = await databases.createDocument(DATABASE_ID, DRIVERS, ID.unique(), row);
-  return created.$id;
+  const { data: created } = await supabase.from("drivers").insert(row).select("id").single();
+  return created?.id;
 }
 
 async function sendText(chatId, text, extra = {}) {
@@ -258,47 +247,50 @@ function formatOrderMessage(order) {
 }
 
 async function notifyOrderOnce(order) {
+  const orderId = order.$id || order.id;
   const remote = getRemoteRegion(order.from_region, order.to_region);
   if (!remote) {
-    await databases.updateDocument(DATABASE_ID, ORDERS, order.$id, { drivers_notified: true });
+    await supabase.from("orders").update({ drivers_notified: true }).eq("id", orderId);
     return;
   }
 
-  const drivers = await databases.listDocuments(DATABASE_ID, DRIVERS, [
-    Query.equal("remote_region", remote),
-    Query.equal("active", true),
-    Query.limit(50),
-  ]);
+  const { data: drivers } = await supabase
+    .from("drivers")
+    .select("*")
+    .eq("remote_region", remote)
+    .eq("active", true)
+    .limit(50);
 
-  const text = formatOrderMessage(order);
+  const text = formatOrderMessage({ ...order, $id: orderId });
   const keyboard = {
-    inline_keyboard: [[{ text: "✅ Qabul qilish", callback_data: `acc:${order.$id}` }]],
+    inline_keyboard: [[{ text: "✅ Qabul qilish", callback_data: `acc:${orderId}` }]],
   };
 
-  for (const d of drivers.documents) {
-    const cid = d.telegram_chat_id;
-    await sendText(cid, text, { reply_markup: keyboard });
+  for (const d of drivers ?? []) {
+    await sendText(d.telegram_chat_id, text, { reply_markup: keyboard });
   }
 
-  await databases.updateDocument(DATABASE_ID, ORDERS, order.$id, { drivers_notified: true });
+  await supabase.from("orders").update({ drivers_notified: true }).eq("id", orderId);
 }
 
 async function pollNewOrders() {
   try {
-    const res = await databases.listDocuments(DATABASE_ID, ORDERS, [
-      Query.equal("status", "pending"),
-      Query.equal("drivers_notified", false),
-      Query.orderAsc("$createdAt"),
-      Query.limit(10),
-    ]);
-    for (const doc of res.documents) {
-      await notifyOrderOnce(doc);
+    const { data: docs, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("status", "pending")
+      .eq("drivers_notified", false)
+      .order("created_at", { ascending: true })
+      .limit(10);
+    if (error) throw error;
+    for (const doc of docs ?? []) {
+      await notifyOrderOnce({ ...doc, $id: doc.id });
     }
   } catch (e) {
     const now = Date.now();
     if (now - lastPollErrLog > 20000) {
       lastPollErrLog = now;
-      console.error("pollNewOrders (Appwrite/tarmoq):", e?.cause?.code || e?.message || e);
+      console.error("pollNewOrders (Supabase/tarmoq):", e?.cause?.code || e?.message || e);
     }
   }
 }
@@ -314,10 +306,12 @@ async function handleAccept(chatId, orderId, callbackQueryId) {
     return;
   }
 
-  let order;
-  try {
-    order = await databases.getDocument(DATABASE_ID, ORDERS, orderId);
-  } catch {
+  const { data: orderRow, error: orderErr } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (orderErr || !orderRow) {
     await TG("answerCallbackQuery", {
       callback_query_id: callbackQueryId,
       text: "Buyurtma topilmadi",
@@ -325,6 +319,7 @@ async function handleAccept(chatId, orderId, callbackQueryId) {
     });
     return;
   }
+  const order = { ...orderRow, $id: orderRow.id };
 
   if (order.status !== "pending") {
     await TG("answerCallbackQuery", {
@@ -345,12 +340,15 @@ async function handleAccept(chatId, orderId, callbackQueryId) {
     return;
   }
 
-  await databases.updateDocument(DATABASE_ID, ORDERS, orderId, {
-    status: "accepted",
-    driver_chat_id: String(chatId),
-    driver_name: driver.name,
-    driver_phone: driver.phone,
-  });
+  await supabase
+    .from("orders")
+    .update({
+      status: "accepted",
+      driver_chat_id: String(chatId),
+      driver_name: driver.name,
+      driver_phone: driver.phone,
+    })
+    .eq("id", orderId);
 
   await TG("answerCallbackQuery", {
     callback_query_id: callbackQueryId,

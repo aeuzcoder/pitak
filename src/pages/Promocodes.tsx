@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
-import { databases, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite";
-import { Query, ID } from "appwrite";
+import { supabase } from "@/lib/supabase";
+import { TABLES, mapRow, mapRows } from "@/lib/db";
 import { PageTransition } from "@/components/PageTransition";
 import { LottieButton } from "@/components/LottieButton";
 import { Input } from "@/components/ui/input";
@@ -26,10 +26,11 @@ export default function Promocodes() {
   useEffect(() => {
     const fetchCodes = async () => {
       try {
-        const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PROMOCODES, [
-          Query.equal("is_active", true),
-        ]);
-        setCodes(res.documents as unknown as Promocode[]);
+        const { data } = await supabase
+          .from(TABLES.PROMOCODES)
+          .select("*")
+          .eq("is_active", true);
+        setCodes(mapRows(data ?? []) as unknown as Promocode[]);
       } catch {
         setCodes([]);
       } finally {
@@ -43,20 +44,22 @@ export default function Promocodes() {
     if (!input.trim() || !user) return;
     setApplying(true);
     try {
-      const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PROMOCODES, [
-        Query.equal("code", input.trim().toUpperCase()),
-        Query.equal("is_active", true),
-      ]);
-      if (res.documents.length === 0) {
+      const { data: promoRow } = await supabase
+        .from(TABLES.PROMOCODES)
+        .select("*")
+        .eq("code", input.trim().toUpperCase())
+        .eq("is_active", true)
+        .maybeSingle();
+      if (!promoRow) {
         toast.error(t("promocodes.notFound"));
         return;
       }
-      const promo = res.documents[0];
-      await databases.createDocument(DATABASE_ID, COLLECTIONS.USER_PROMOCODES, ID.unique(), {
+      const promo = mapRow(promoRow);
+      const { error } = await supabase.from(TABLES.USER_PROMOCODES).insert({
         user_id: user.$id,
         promocode_id: promo.$id,
-        used_at: new Date().toISOString(),
       });
+      if (error) throw error;
       toast.success(t("common.success"));
       setInput("");
     } catch {

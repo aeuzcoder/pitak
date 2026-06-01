@@ -1,26 +1,33 @@
 import i18n from "@/i18n";
 
+/** Supabase Auth `error.code` */
+const CODE_MAP: Record<string, string> = {
+  email_address_invalid: "errors.emailAddressInvalid",
+  email_address_not_authorized: "errors.emailNotAuthorized",
+  over_email_send_rate_limit: "errors.rateLimited",
+  over_request_rate_limit: "errors.rateLimited",
+  user_already_exists: "errors.userAlreadyExists",
+  email_exists: "errors.userAlreadyExists",
+  invalid_credentials: "errors.invalidCredentials",
+  email_not_confirmed: "errors.emailNotConfirmed",
+};
+
 const ERROR_MAP: Record<string, string> = {
   "Invalid credentials": "errors.invalidCredentials",
-  "Invalid credentials. Please check the email and password": "errors.invalidCredentials",
   "Invalid email": "errors.invalidEmail",
-  "Invalid password": "errors.invalidPassword",
-  "Password must be between 8 and 256 characters": "errors.invalidPassword",
-  "Password must be at least 8 characters": "errors.invalidPassword",
-  "A user with the same id, email, or phone already exists": "errors.userAlreadyExists",
-  "user_already_exists": "errors.userAlreadyExists",
-  "Rate limit": "errors.rateLimited",
-  "Network request failed": "errors.networkError",
-  "Failed to fetch": "errors.networkError",
-  "NetworkError": "errors.networkError",
-  "user_not_found": "errors.userNotFound",
-  "User (role: guests) missing scope": "errors.unauthorized",
-  "user_unauthorized": "errors.unauthorized",
-  "general_unauthorized_scope": "errors.unauthorized",
-  "user_blocked": "errors.blockedAccount",
+  "Password must be at least": "errors.invalidPassword",
+  "User already registered": "errors.userAlreadyExists",
+  "Email not confirmed": "errors.emailNotConfirmed",
+  "email rate limit exceeded": "errors.rateLimited",
+  "is invalid": "errors.emailAddressInvalid",
 };
 
 export function getErrorMessage(err: unknown): string {
+  const code = (err as { code?: string })?.code;
+  if (code && CODE_MAP[code]) {
+    return i18n.t(CODE_MAP[code]);
+  }
+
   const raw = err instanceof Error ? err.message : String(err);
 
   for (const [key, translationKey] of Object.entries(ERROR_MAP)) {

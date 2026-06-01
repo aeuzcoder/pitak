@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
-import { account, databases, storage, DATABASE_ID, COLLECTIONS, BUCKET_ID } from "@/lib/appwrite";
-import { ID, Query } from "appwrite";
+import { supabase } from "@/lib/supabase";
+import { TABLES, AVATARS_BUCKET } from "@/lib/db";
 import { PageTransition } from "@/components/PageTransition";
 import { Button } from "@/components/ui/button";
 import { LottieButton } from "@/components/LottieButton";
@@ -22,7 +22,7 @@ export default function Profile() {
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [avatarFileId, setAvatarFileId] = useState<string | null>(null);
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [profileDocId, setProfileDocId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -32,22 +32,24 @@ export default function Profile() {
     if (!user) return;
     const loadProfile = async () => {
       try {
-        const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PROFILES, [
-          Query.equal("user_id", user.$id),
-          Query.limit(1),
-        ]);
-        if (res.documents.length > 0) {
-          const doc = res.documents[0];
-          setProfileDocId(doc.$id);
-          setPhone(doc.phone || "");
-          if (doc.avatar_id) {
-            setAvatarFileId(doc.avatar_id);
-            const url = storage.getFilePreview(BUCKET_ID, doc.avatar_id, 200, 200);
-            setAvatarUrl(url.toString());
+        const { data } = await supabase
+          .from(TABLES.PROFILES)
+          .select("id, phone, avatar_path")
+          .eq("user_id", user.$id)
+          .maybeSingle();
+        if (data) {
+          setProfileDocId(data.id);
+          setPhone(data.phone || "");
+          if (data.avatar_path) {
+            setAvatarPath(data.avatar_path);
+            const { data: urlData } = supabase.storage
+              .from(AVATARS_BUCKET)
+              .getPublicUrl(data.avatar_path);
+            setAvatarUrl(urlData.publicUrl);
           }
         }
       } catch {
-        // profiles collection may not exist yet
+        // profiles jadvali hali bo'lmasa ham ishlaydi
       }
     };
     loadProfile();
@@ -58,25 +60,34 @@ export default function Profile() {
     if (!file || !user) return;
     setUploading(true);
     try {
-      if (avatarFileId) {
-        try { await storage.deleteFile(BUCKET_ID, avatarFileId); } catch { /* ignore */ }
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${user.$id}/avatar.${ext}`;
+
+      if (avatarPath) {
+        await supabase.storage.from(AVATARS_BUCKET).remove([avatarPath]);
       }
-      const uploaded = await storage.createFile(BUCKET_ID, ID.unique(), file);
-      const url = storage.getFilePreview(BUCKET_ID, uploaded.$id, 200, 200);
-      setAvatarFileId(uploaded.$id);
-      setAvatarUrl(url.toString());
+
+      const { error: uploadErr } = await supabase.storage
+        .from(AVATARS_BUCKET)
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(path);
+      setAvatarPath(path);
+      setAvatarUrl(urlData.publicUrl);
 
       if (profileDocId) {
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, profileDocId, {
-          avatar_id: uploaded.$id,
-        });
+        await supabase
+          .from(TABLES.PROFILES)
+          .update({ avatar_path: path })
+          .eq("id", profileDocId);
       } else {
-        const doc = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, ID.unique(), {
-          user_id: user.$id,
-          phone: phone,
-          avatar_id: uploaded.$id,
-        });
-        setProfileDocId(doc.$id);
+        const { data: created } = await supabase
+          .from(TABLES.PROFILES)
+          .insert({ user_id: user.$id, phone, avatar_path: path })
+          .select("id")
+          .single();
+        if (created) setProfileDocId(created.id);
       }
       toast.success(t("common.success"));
     } catch {
@@ -90,19 +101,20 @@ export default function Profile() {
     if (!user) return;
     setLoading(true);
     try {
-      await account.updateName(name);
+      const { error: authErr } = await supabase.auth.updateUser({
+        data: { name },
+      });
+      if (authErr) throw authErr;
 
       if (profileDocId) {
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROFILES, profileDocId, {
-          phone,
-        });
+        await supabase.from(TABLES.PROFILES).update({ phone }).eq("id", profileDocId);
       } else {
-        const doc = await databases.createDocument(DATABASE_ID, COLLECTIONS.PROFILES, ID.unique(), {
-          user_id: user.$id,
-          phone,
-          avatar_id: avatarFileId || "",
-        });
-        setProfileDocId(doc.$id);
+        const { data: created } = await supabase
+          .from(TABLES.PROFILES)
+          .insert({ user_id: user.$id, phone, avatar_path: avatarPath || "" })
+          .select("id")
+          .single();
+        if (created) setProfileDocId(created.id);
       }
 
       await checkSession();
@@ -123,7 +135,6 @@ export default function Profile() {
   return (
     <PageTransition>
       <div className="min-h-screen bg-secondary/50 pb-24">
-        {/* Gradient banner */}
         <div className="relative bg-gradient-to-br from-primary to-primary-dark px-4 pb-16 pt-12">
           <div className="max-w-3xl mx-auto">
             <button onClick={() => navigate(-1)} className="rounded-lg p-1">
@@ -133,7 +144,6 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Avatar */}
         <div className="-mt-10 flex justify-center">
           <div className="relative">
             <motion.div
@@ -236,11 +246,7 @@ export default function Profile() {
             </CardContent>
           </Card>
 
-          <Button
-            variant="destructive"
-            onClick={handleLogout}
-            className="w-full mt-4"
-          >
+          <Button variant="destructive" onClick={handleLogout} className="w-full mt-4">
             {t("auth.logout")}
           </Button>
         </div>

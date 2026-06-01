@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
-import { client, databases, DATABASE_ID, COLLECTIONS } from "@/lib/appwrite";
-import { Query } from "appwrite";
+import { supabase } from "@/lib/supabase";
+import { TABLES, mapRow } from "@/lib/db";
 import { PageTransition } from "@/components/PageTransition";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,11 +49,13 @@ export default function History() {
     if (!user) return;
     const fetchOrders = async () => {
       try {
-        const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.ORDERS, [
-          Query.equal("user_id", user.$id),
-          Query.orderDesc("created_at"),
-        ]);
-        setOrders(res.documents as unknown as Order[]);
+        const { data, error } = await supabase
+          .from(TABLES.ORDERS)
+          .select("*")
+          .eq("user_id", user.$id)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        setOrders((data ?? []).map((row) => mapRow(row) as unknown as Order));
       } catch {
         setOrders([]);
       } finally {
@@ -65,24 +67,40 @@ export default function History() {
 
   useEffect(() => {
     if (!user) return;
-    const channel = `databases.${DATABASE_ID}.collections.${COLLECTIONS.ORDERS}.documents`;
-    const unsubscribe = client.subscribe(channel, (event) => {
-      const doc = event.payload as unknown as Order;
-      if (!doc?.$id || doc.user_id !== user.$id) return;
-      setOrders((prev) => {
-        const idx = prev.findIndex((o) => o.$id === doc.$id);
-        if (idx >= 0) {
-          const next = [...prev];
-          next[idx] = { ...next[idx], ...doc };
-          return next;
+    const channel = supabase
+      .channel(`orders-${user.$id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: TABLES.ORDERS,
+          filter: `user_id=eq.${user.$id}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown> | null;
+          if (!row?.id) return;
+          const doc = mapRow({ ...row, id: String(row.id) }) as unknown as Order;
+          if (doc.user_id !== user.$id) return;
+          setOrders((prev) => {
+            const idx = prev.findIndex((o) => o.$id === doc.$id);
+            if (payload.eventType === "DELETE") {
+              return prev.filter((o) => o.$id !== doc.$id);
+            }
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = { ...next[idx], ...doc };
+              return next;
+            }
+            return [doc, ...prev].sort(
+              (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            );
+          });
         }
-        return [doc, ...prev].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-      });
-    });
+      )
+      .subscribe();
     return () => {
-      unsubscribe();
+      void supabase.removeChannel(channel);
     };
   }, [user]);
 
